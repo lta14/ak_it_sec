@@ -11,16 +11,25 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.Volley;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+
 public class MainActivity extends AppCompatActivity {
     private TextView m_TextMessage;
     private EditText m_UrlText;
     private EditText m_TokenText;
+
+    private CryptoModel m_Model;
+
 
     //qr code scanner object
     private IntentIntegrator qrScan;
@@ -69,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
         if (result != null)
         {
             //{"url":"https://apps.egiz.gv.at/cryptobinding/","token":561vr85pvv2famg9lec1pfg5do"}
-            
+
             //if qrcode has nothing in it
             if (result.getContents() == null)
             {
@@ -101,7 +110,48 @@ public class MainActivity extends AppCompatActivity {
 
 
     public void scan(View view) {
-
         qrScan.initiateScan();
+    }
+
+    public void request(View view) {
+        m_Model = null;
+        String url = m_UrlText.getText().toString();
+        String token = m_TokenText.getText().toString();
+        if(url == "" || token == "")
+        {
+            Toast.makeText(this, "insert url and token", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // Instantiate the RequestQueue.
+        RequestQueue queue = Volley.newRequestQueue(this);
+
+        // create uri :
+        String uri = String.format(url+"/binding/info" + "?token=%1$s&appId=%2$s",
+                token,
+                "lukas.tanner");
+
+        CustomRequest request = new CustomRequest(Request.Method.GET,
+                uri, new Response.Listener<CryptoModel>() {
+                    @Override
+                    public void onResponse(CryptoModel response) {
+                        m_Model = response;
+                        }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                //mTextView.setText("That didn't work!");
+            }
+        });
+
+        // Add the request to the RequestQueue.
+        queue.add(request);
+    }
+
+    public void test(View view) {
+        if(m_Model != null)
+        {
+            Toast.makeText(this, "auth token: " + m_Model.getM_AuthToken(), Toast.LENGTH_LONG).show();
+        }
     }
 }
