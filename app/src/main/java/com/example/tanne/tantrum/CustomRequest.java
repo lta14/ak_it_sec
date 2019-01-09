@@ -37,6 +37,9 @@ public class CustomRequest extends Request {
 
             String authToken = response.headers.get("x-auth-token");
 
+
+
+
             CryptoModel result = new CryptoModel();
             result.setM_Subject(subject);
             result.setM_UserName(userName);

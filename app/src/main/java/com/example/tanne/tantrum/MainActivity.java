@@ -2,6 +2,9 @@ package com.example.tanne.tantrum;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.security.KeyPairGeneratorSpec;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
 import android.support.v7.app.AppCompatActivity;
@@ -22,6 +25,26 @@ import com.google.zxing.integration.android.IntentResult;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.IOException;
+import java.io.StringWriter;
+import java.math.BigInteger;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.util.Calendar;
+
+import javax.security.auth.x500.X500Principal;
+import org.spongycastle.asn1.x500.X500Name;
+import org.spongycastle.openssl.jcajce.JcaPEMWriter;
+import org.spongycastle.operator.ContentSigner;
+import org.spongycastle.operator.OperatorCreationException;
+import org.spongycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.spongycastle.pkcs.PKCS10CertificationRequest;
+import org.spongycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.spongycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 
 public class MainActivity extends AppCompatActivity {
     private TextView m_TextMessage;
@@ -33,6 +56,10 @@ public class MainActivity extends AppCompatActivity {
 
     //qr code scanner object
     private IntentIntegrator qrScan;
+
+    public final static int ANY_PURPOSE = KeyProperties.PURPOSE_ENCRYPT |
+            KeyProperties.PURPOSE_DECRYPT | KeyProperties.PURPOSE_SIGN |
+            KeyProperties.PURPOSE_VERIFY;
 
     private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
             = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -149,9 +176,140 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void test(View view) {
-        if(m_Model != null)
+        if(m_Model == null)
         {
-            Toast.makeText(this, "auth token: " + m_Model.getM_AuthToken(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "model is null", Toast.LENGTH_LONG).show();
+            return;
         }
+        if(m_Model.getM_AuthToken()== null)
+        {
+            Toast.makeText(this, "auth token is null", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if(m_Model.getM_Subject()== null)
+        {
+            Toast.makeText(this, "subject is null", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        KeyStore keyStore;
+        try {
+            keyStore = KeyStore.getInstance("AndroidKeyStore");
+        }catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            keyStore.load(null);
+        }
+        catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String alias = "my_key";
+        try {
+            if(keyStore.containsAlias(alias))
+            {
+                keyStore.deleteEntry(alias);
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+
+        KeyPairGenerator generator;
+        try {
+            generator = KeyPairGenerator.getInstance(
+                    KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore");
+            //TODO: setSubject needed?
+
+            generator.initialize(new KeyGenParameterSpec.Builder(
+                    alias, ANY_PURPOSE)
+                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+                    .build());
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        generator.generateKeyPair();
+
+        // Retrieve the keys
+        KeyStore.PrivateKeyEntry privateKeyEntry;
+        try {
+            privateKeyEntry = (KeyStore.PrivateKeyEntry)keyStore.getEntry(alias, null);
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        //TODO: (PrivateKey)keystore.getKey(alias, privateKeyPassword)); give password
+        PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+        PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
+
+        //TODO: cast to RSAPrivateKey?
+
+        Toast.makeText(this, "private key = " + privateKey.toString(), Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "public key = " + publicKey.toString(), Toast.LENGTH_LONG).show();
+
+
+        //PrivateKey privateKey = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
+        //PublicKey publicKey = keyStore.getCertificate(alias).getPublicKey();
+
+        /*
+        I was referring to the privateKey. The public key raw data is accesible using
+        byte publickey[] = keyStore.getCertificate(alias).getPublicKey().getEncoded();.
+        You will need to convert it to base64 to send it to server as String
+         */
+
+        //X500Principal subject = new X500Principal (m_Model.getM_Subject());
+        X500Name x500Name = new X500Name(m_Model.getM_Subject());
+        ContentSigner signGen;
+        try {
+            signGen = new JcaContentSignerBuilder("SHA256withRSA").build(privateKey);
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+        if(signGen == null)
+        {
+            Toast.makeText(this, "Signer creation failed", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(x500Name, publicKey);
+        PKCS10CertificationRequest csr = builder.build(signGen);
+
+        if(csr == null)
+        {
+            Toast.makeText(this, "CSR creation failed", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        //write certification request
+        String csrString = null;
+        try {
+            csrString = csrToString(csr);
+        } catch (IOException e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Toast.makeText(this, csrString, Toast.LENGTH_LONG).show();
     }
+
+    private String csrToString(PKCS10CertificationRequest csr) throws IOException{
+        StringWriter w = new StringWriter();
+        JcaPEMWriter p = new JcaPEMWriter(w);
+        p.writeObject(csr);
+        p.close();
+        return w.toString();
+    }
+
+
+
 }
