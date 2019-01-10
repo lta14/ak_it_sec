@@ -68,10 +68,21 @@
             android:layout_height="wrap_content">
 
             <Button
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:onClick="request"
-                android:text="REQUEST CRYPTO INFORMATION" />
+                android:text="REQUEST CRYPTO INFORMATION"
+                android:maxLines="1"
+                android:layout_weight="1"/>
+
+            <EditText
+                android:id="@+id/requestSuccess"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="0"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="nothing received yet"/>
 
         </LinearLayout>
         <LinearLayout
@@ -82,10 +93,25 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:onClick="test"
-                android:text="Test CRYPTO INFORMATION" />
+                android:text="GET Certificate" />
 
         </LinearLayout>
 
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@mipmap/ic_success_round"
+            android:layout_gravity="center"
+            android:visibility="invisible"
+            />
+        <ImageView
+            android:id="@+id/showSuccess"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@mipmap/ic_success_round"
+            android:layout_gravity="center"
+            android:visibility="invisible"
+            />
 
 
     </LinearLayout>
