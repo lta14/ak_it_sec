@@ -2,12 +2,13 @@ package com.example.tanne.tantrum;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.security.KeyPairGeneratorSpec;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Base64;
+import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
@@ -18,6 +19,7 @@ import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
+import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
@@ -27,20 +29,16 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.StringWriter;
-import java.math.BigInteger;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Map;
 
-import javax.security.auth.x500.X500Principal;
 import org.spongycastle.asn1.x500.X500Name;
 import org.spongycastle.openssl.jcajce.JcaPEMWriter;
 import org.spongycastle.operator.ContentSigner;
-import org.spongycastle.operator.OperatorCreationException;
 import org.spongycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.spongycastle.pkcs.PKCS10CertificationRequest;
 import org.spongycastle.pkcs.PKCS10CertificationRequestBuilder;
@@ -52,6 +50,10 @@ public class MainActivity extends AppCompatActivity {
     private EditText m_TokenText;
 
     private CryptoModel m_Model;
+
+    private RequestQueue m_Queue;
+
+    private String m_Response;
 
 
     //qr code scanner object
@@ -96,6 +98,9 @@ public class MainActivity extends AppCompatActivity {
 
         //intializing scan object
         qrScan = new IntentIntegrator(this);
+
+        // Instantiate the RequestQueue.
+        m_Queue = Volley.newRequestQueue(this);
     }
 
     //Getting the scan results
@@ -112,19 +117,12 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Result Not Found", Toast.LENGTH_LONG).show();
             } else
             {
-                //if qr contains data
                 try {
-                    //converting the data to json
                     JSONObject obj = new JSONObject(result.getContents());
-                    //setting values to textviews
                     m_UrlText.setText(obj.getString("url"));
                     m_TokenText.setText(obj.getString("token"));
                 } catch (JSONException e) {
                     e.printStackTrace();
-                    //if control comes here
-                    //that means the encoded format not matches
-                    //in this case you can display whatever data is available on the qrcode
-                    //to a toast
                     Toast.makeText(this, result.getContents(), Toast.LENGTH_LONG).show();
                 }
             }
@@ -150,9 +148,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Instantiate the RequestQueue.
-        RequestQueue queue = Volley.newRequestQueue(this);
-
         // create uri :
         String uri = String.format(url+"/binding/info" + "?token=%1$s&appId=%2$s",
                 token,
@@ -172,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Add the request to the RequestQueue.
-        queue.add(request);
+        m_Queue.add(request);
     }
 
     public void test(View view) {
@@ -219,7 +214,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-
         KeyPairGenerator generator;
         try {
             generator = KeyPairGenerator.getInstance(
@@ -251,12 +245,6 @@ public class MainActivity extends AppCompatActivity {
         PrivateKey privateKey = privateKeyEntry.getPrivateKey();
         PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
 
-        //TODO: cast to RSAPrivateKey?
-
-        Toast.makeText(this, "private key = " + privateKey.toString(), Toast.LENGTH_LONG).show();
-        Toast.makeText(this, "public key = " + publicKey.toString(), Toast.LENGTH_LONG).show();
-
-
         //PrivateKey privateKey = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
         //PublicKey publicKey = keyStore.getCertificate(alias).getPublicKey();
 
@@ -266,7 +254,6 @@ public class MainActivity extends AppCompatActivity {
         You will need to convert it to base64 to send it to server as String
          */
 
-        //X500Principal subject = new X500Principal (m_Model.getM_Subject());
         X500Name x500Name = new X500Name(m_Model.getM_Subject());
         ContentSigner signGen;
         try {
@@ -291,7 +278,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         //write certification request
-        String csrString = null;
+        String csrString;
         try {
             csrString = csrToString(csr);
         } catch (IOException e) {
@@ -300,6 +287,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         Toast.makeText(this, csrString, Toast.LENGTH_LONG).show();
+
+
+        postCsr(csrString, m_Model.getM_AuthToken());
     }
 
     private String csrToString(PKCS10CertificationRequest csr) throws IOException{
@@ -310,6 +300,55 @@ public class MainActivity extends AppCompatActivity {
         return w.toString();
     }
 
+    private void postCsr(final String csr, final String authToken)
+    {
+        String url = m_UrlText.getText().toString();
+        if(url == "")
+        {
+            Toast.makeText(this, "url is empty", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        url = url + "/binding/signV2";
+
+        StringRequest postRequest = new StringRequest(Request.Method.POST, url,
+                new Response.Listener<String>()
+                {
+                    @Override
+                    public void onResponse(String response) {
+                        // response
+                        Log.wtf("Response", response);
+                        m_Response = response;
+                    }
+                },
+                new Response.ErrorListener()
+                {
+                    @Override
+                    public void onErrorResponse(VolleyError error) {
+                        // error
+                        Log.wtf("Error.Response", error.getMessage());
+                    }
+                }) {
+            @Override
+            protected Map<String, String> getParams()
+            {
+                Map<String, String>  params = new HashMap<String, String>();
+                params.put("csrEncoded", Base64.encodeToString(csr.getBytes(), Base64.NO_WRAP));
+                params.put("appId", "lukas.tanner");
+
+                return params;
+            }
+
+            @Override
+            public Map<String, String> getHeaders()  {
+                HashMap<String, String> headers = new HashMap<>();
+                headers.put("x-auth-token", authToken);
+                return headers;
+            }
+        };
+
+        m_Queue.add(postRequest);
+    }
 
 
 }

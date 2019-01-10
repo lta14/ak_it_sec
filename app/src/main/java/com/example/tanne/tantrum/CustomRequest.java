@@ -1,6 +1,8 @@
 package com.example.tanne.tantrum;
 
 
+import android.util.Log;
+
 import com.android.volley.NetworkResponse;
 import com.android.volley.ParseError;
 import com.android.volley.Request;
@@ -22,6 +24,7 @@ public class CustomRequest extends Request {
         try {
             String jsonString = new String(response.data);
 
+            Log.wtf("Response", jsonString);
 
             JSONObject jsonObject = new JSONObject(jsonString);
 
@@ -37,9 +40,6 @@ public class CustomRequest extends Request {
 
             String authToken = response.headers.get("x-auth-token");
 
-
-
-
             CryptoModel result = new CryptoModel();
             result.setM_Subject(subject);
             result.setM_UserName(userName);
@@ -54,7 +54,6 @@ public class CustomRequest extends Request {
 
             return Response.success(result, HttpHeaderParser.parseCacheHeaders(response));
         } catch (JSONException e) {
-            e.printStackTrace();
             return Response.error(new ParseError(e));
         }
     }
