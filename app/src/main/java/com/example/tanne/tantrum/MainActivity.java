@@ -13,6 +13,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,23 +25,25 @@ import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
+import com.squareup.okhttp.OkHttpClient;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringWriter;
+import java.security.KeyManagementException;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
-import java.security.NoSuchProviderException;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -52,6 +55,8 @@ import org.spongycastle.pkcs.PKCS10CertificationRequest;
 import org.spongycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.spongycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
 public class MainActivity extends AppCompatActivity {
@@ -69,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     private KeyStore m_Keystore;
+    private KeyStore m_Trustore;
 
     //qr code scanner object
     private IntentIntegrator qrScan;
@@ -186,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
         m_Queue.add(request);
     }
 
-    public void test(View view) {
+    public void getCertificate(View view) {
         if(m_Model == null)
         {
             Toast.makeText(this, "model is null", Toast.LENGTH_LONG).show();
@@ -202,7 +208,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "subject is null", Toast.LENGTH_LONG).show();
             return;
         }
-
 
         try {
             m_Keystore = KeyStore.getInstance("AndroidKeyStore");
@@ -376,64 +381,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void storeCertInKeystore(String cert) {
 
+        byte[] certBytes = Base64.decode(cert, Base64.URL_SAFE);
 
-        Testing(cert);
-
-        String adapted = "-----BEGIN CERTIFICATE-----\n" + cert + "\n-----END CERTIFICATE-----";
-
-
-
-
-
-        String hiho = Base64.encodeToString(adapted.getBytes(), Base64.NO_WRAP);
-        //Toast.makeText(this, hiho, Toast.LENGTH_LONG).show();
-
-        String test = "-----BEGIN CERTIFICATE-----\n" +
-                  "MIIGdjCCBF6gAwIBAgIIO0HBPxdtR7gwDQYJKoZIhvcNAQELBQAwgZwxCzAJBgNV\n"+
-                  "BAYTAkFUMQ0wCwYDVQQIEwRXaWVuMQ0wCwYDVQQHEwRXaWVuMRkwFwYDVQQKExBC\n"+
-                  "dW5kZXNrYW56bGVyYW10MQswCQYDVQQLEwJJVDEiMCAGA1UEAxQZQktBX0NyeXB0\n"+
-                  "b19CaW5kaW5nX1Jvb3RDQTEjMCEGCSqGSIb3DQEJARYUemVydGlmaWthdEBia2Eu\n"+
-                  "Z3YuYXQwHhcNMTkwMTEwMTEyMDI2WhcNMTkwMTExMTEyNTI2WjBpMRkwFwYDVQQD\n"+
-                  "DBBTb25qYSBNdXN0ZXJmcmF1MRUwEwYDVQQKDAxsdWthcy50YW5uZXIxNTAzBgNV\n"+
-                  "BC4TLE56cDJ5Z0J6emdXRklzK3Y4czd5eVA1TUlKNlNUNkN2S1hTK3pZd2pkUFk9\n"+
-                  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwrm0oxalPgXMlWn7quo1\n"+
-                  "78qQbCxNfdCdq6tKLEXllv9En2dcInykaxNnhuDX7-QzgLC0gLK3b2VNZtkK91tt\n"+
-                  "DmgFxrMajrHVIIHuhWFP65ajbNrNZtzpmNvVlwl3r-N4e9YVpYEFJlLdhWNhNaxS\n"+
-                  "JjFqO0VxUttmKGTxACMoKsHodczBD5lUlKoPsNKKAhMZjHmzipQTUa4KPBP0pI8A\n"+
-                  "2-P6xz4iQaHfaqdbXMfysB9vONf5br1ph0ha6Sthgj-GVZbWEdFzLrnCAjEJLxD-\n"+
-                  "gWyR4_OkWJlE9ed7SuKZ4ADgnBMLh63g-quCNxrYVGxb9OVZe9BaJxCVHcldKPqM\n"+
-                  "1wIDAQABo4IB7DCCAegwPQYDVR0fBDYwNDAyoDCgLoYsaHR0cHM6Ly9hcHBzLmVn\n"+
-                  "aXouZ3YuYXQvY3J5cHRvYmluZGluZy9jYS9jcmwwgdEGA1UdIwSByTCBxoAUc1B7\n"+
-                  "HqujJ4eUC8ZPvz7Hj5U_zwmhgaKkgZ8wgZwxCzAJBgNVBAYTAkFUMQ0wCwYDVQQI\n"+
-                  "EwRXaWVuMQ0wCwYDVQQHEwRXaWVuMRkwFwYDVQQKExBCdW5kZXNrYW56bGVyYW10\n"+
-                  "MQswCQYDVQQLEwJJVDEiMCAGA1UEAxQZQktBX0NyeXB0b19CaW5kaW5nX1Jvb3RD\n"+
-                  "QTEjMCEGCSqGSIb3DQEJARYUemVydGlmaWthdEBia2EuZ3YuYXSCCQCiNxFUU14N\n"+
-                  "ozAdBgNVHQ4EFgQUS6nwm2cci7RpR0U4nMafP2qTYwwwDAYDVR0TAQH_BAIwADAL\n"+
-                  "BgNVHQ8EBAMCBLAwSQYIKwYBBQUHAQEEPTA7MDkGCCsGAQUFBzAChi1odHRwczov\n"+
-                  "L2FwcHMuZWdpei5ndi5hdC9jcnlwdG9iaW5kaW5nL2NhL2NlcnQwTgYUaYP5pa6f\n"+
-                  "n-Kah4uWiKC09pWwiWAENhY0aHR0cHM6Ly9kZXYuYS1zaXQuYXQvY3J5cHRvYmlu\n"+
-                  "ZGluZy9tYW5hZ2VtZW50L3Jldm9rZTANBgkqhkiG9w0BAQsFAAOCAgEAsBgHKnK4\n"+
-                  "_Ur55fE9i39Y1qDVLfW3jfCT6LP-SkKss8-FF5BtOSp0UOLKgNDYbCFNQpd0sV8l\n"+
-                  "04qbWZ7PZl2FrV8PeJOEHFjSXrgidPul92LcIxhGClosSbyfKCxNj9C5BrfRnGQf\n"+
-                  "UWxuIGKN3-l7k99w-XG0ALmN-iw4cbC1fJu6L7JqK9EW0A7mA7UIJfoPAfaYF6Kh\n"+
-                  "MoNFQHBOkhZ7tAtogrbNUoV8fT7x6KDm8LK7-QJvpu3rLbbDQFyTVqAkHeEefPEj\n"+
-                  "IFAbhVb5leb98i04Pzzt0XrDk9BDHcqw6Br-Ai9k9l4DTGooMHosm9WpwMgOCKs5\n"+
-                  "2Zi8e7Nqk3TknM51LWXHikVRyygouRW5xIJ9Wdek6nKESIoaBlDEGo2QvPfgSIhi\n"+
-                  "t5OYXqx55wLRSH8378HaSh5VjhSsU6OduIZdPF5svFTAXKugHT8093v4ZxJ5-0AR\n"+
-                  "_UbLTWUJV6OPLvdK9Ry-8J7DDTiHMI8ZCJF1kwoKUgZPcDNWXMQVILQNMVJBYypj\n"+
-                  "E-vTJkqv_RpcOzcUjlk1GUEEKmglifdd0CCZTqMvhRzIHsCcO-7L_JFkmP_RHTyK\n"+
-                  "DiFCYEKuiMLL3w6okuYRXNiP7GphECzW8I9rEQlmpeBEAeVuL1r9IdSmm7cs_A7u\n"+
-                  "elj68kfiM-XK1Wf6gxZeWXd0nnNvwNdq0SI=\n"+
-                   "-----END CERTIFICATE-----";
-        byte[] certBytes = test.getBytes();
-
-        //byte[] certBytes = hiho.getBytes();
         CertificateFactory certificateFactory;
         try {
             certificateFactory = CertificateFactory.getInstance("X.509", "BC");
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.wtf("MEGA", "CertificateFactory");
+            Log.wtf("Certificate", "CertificateFactory");
             return;
         }
         X509Certificate certificate;
@@ -441,104 +396,150 @@ public class MainActivity extends AppCompatActivity {
             certificate = (X509Certificate)certificateFactory.generateCertificate(new ByteArrayInputStream(certBytes));
         } catch (CertificateException e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.wtf("MEGA", "generate certificate failed: " + e.getMessage() );
+            Log.wtf("Certificate", "generate certificate failed: " + e.getMessage() );
             return;
         }
 
         if(certificate == null)
         {
-            Log.wtf("MEGA", "Certificate is null");
+            Toast.makeText(this, "Certificate could not be obtained", Toast.LENGTH_LONG).show();
+            Log.wtf("Certificate", "Certificate is null");
+            return;
+        }
+
+
+        try {
+            //keyStore = KeyStore.getInstance("BKS");
+            m_Trustore = KeyStore.getInstance("pkcs12");
+            //KeyStore keystore = KeyStore.getInstance("JKS");
+        }catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("Certificate1", e.getMessage());
+            return;
+        }
+
+        try {
+            m_Trustore.load(null);
+        }
+        catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("Certificate2", e.getMessage());
+            return;
+        }
+
+        String certAlias = "my_super_cert";
+        try {
+            if(m_Trustore.containsAlias(certAlias))
+            {
+                m_Trustore.deleteEntry(certAlias);
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("Certificate3", e.getMessage());
+            return;
+        }
+
+        // Retrieve the keys
+        KeyStore.PrivateKeyEntry privateKeyEntry;
+        try {
+            privateKeyEntry = (KeyStore.PrivateKeyEntry)m_Keystore.getEntry("my_key", null);
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("Certificate4", e.getMessage());
+            return;
+        }
+
+        PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+
+        try {
+            m_Trustore.setKeyEntry(certAlias, privateKey, "mypassword".toCharArray(), new X509Certificate[]{certificate});
+        } catch (KeyStoreException e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("Certificate5", e.getMessage());
             return;
         }
 
         /*
-        KeyStore keyStore;
-        try {
-            keyStore = KeyStore.getInstance("AndroidKeyStore");
-        }catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        try {
-            keyStore.load(null);
-        }
-        catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-        */
-
-        String certAlias = "my_super_cert";
-
         try {
             m_Keystore.setCertificateEntry(certAlias, certificate);
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
+        */
 
         m_ShowSuccess.setVisibility(View.VISIBLE);
     }
 
-    private void Testing(String cert)
-    {
-        String test = "-----BEGIN CERTIFICATE-----\n" +
-                "MIIGdjCCBF6gAwIBAgIIO0HBPxdtR7gwDQYJKoZIhvcNAQELBQAwgZwxCzAJBgNV\n"+
-                "BAYTAkFUMQ0wCwYDVQQIEwRXaWVuMQ0wCwYDVQQHEwRXaWVuMRkwFwYDVQQKExBC\n"+
-                "dW5kZXNrYW56bGVyYW10MQswCQYDVQQLEwJJVDEiMCAGA1UEAxQZQktBX0NyeXB0\n"+
-                "b19CaW5kaW5nX1Jvb3RDQTEjMCEGCSqGSIb3DQEJARYUemVydGlmaWthdEBia2Eu\n"+
-                "Z3YuYXQwHhcNMTkwMTEwMTEyMDI2WhcNMTkwMTExMTEyNTI2WjBpMRkwFwYDVQQD\n"+
-                "DBBTb25qYSBNdXN0ZXJmcmF1MRUwEwYDVQQKDAxsdWthcy50YW5uZXIxNTAzBgNV\n"+
-                "BC4TLE56cDJ5Z0J6emdXRklzK3Y4czd5eVA1TUlKNlNUNkN2S1hTK3pZd2pkUFk9\n"+
-                "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwrm0oxalPgXMlWn7quo1\n"+
-                "78qQbCxNfdCdq6tKLEXllv9En2dcInykaxNnhuDX7-QzgLC0gLK3b2VNZtkK91tt\n"+
-                "DmgFxrMajrHVIIHuhWFP65ajbNrNZtzpmNvVlwl3r-N4e9YVpYEFJlLdhWNhNaxS\n"+
-                "JjFqO0VxUttmKGTxACMoKsHodczBD5lUlKoPsNKKAhMZjHmzipQTUa4KPBP0pI8A\n"+
-                "2-P6xz4iQaHfaqdbXMfysB9vONf5br1ph0ha6Sthgj-GVZbWEdFzLrnCAjEJLxD-\n"+
-                "gWyR4_OkWJlE9ed7SuKZ4ADgnBMLh63g-quCNxrYVGxb9OVZe9BaJxCVHcldKPqM\n"+
-                "1wIDAQABo4IB7DCCAegwPQYDVR0fBDYwNDAyoDCgLoYsaHR0cHM6Ly9hcHBzLmVn\n"+
-                "aXouZ3YuYXQvY3J5cHRvYmluZGluZy9jYS9jcmwwgdEGA1UdIwSByTCBxoAUc1B7\n"+
-                "HqujJ4eUC8ZPvz7Hj5U_zwmhgaKkgZ8wgZwxCzAJBgNVBAYTAkFUMQ0wCwYDVQQI\n"+
-                "EwRXaWVuMQ0wCwYDVQQHEwRXaWVuMRkwFwYDVQQKExBCdW5kZXNrYW56bGVyYW10\n"+
-                "MQswCQYDVQQLEwJJVDEiMCAGA1UEAxQZQktBX0NyeXB0b19CaW5kaW5nX1Jvb3RD\n"+
-                "QTEjMCEGCSqGSIb3DQEJARYUemVydGlmaWthdEBia2EuZ3YuYXSCCQCiNxFUU14N\n"+
-                "ozAdBgNVHQ4EFgQUS6nwm2cci7RpR0U4nMafP2qTYwwwDAYDVR0TAQH_BAIwADAL\n"+
-                "BgNVHQ8EBAMCBLAwSQYIKwYBBQUHAQEEPTA7MDkGCCsGAQUFBzAChi1odHRwczov\n"+
-                "L2FwcHMuZWdpei5ndi5hdC9jcnlwdG9iaW5kaW5nL2NhL2NlcnQwTgYUaYP5pa6f\n"+
-                "n-Kah4uWiKC09pWwiWAENhY0aHR0cHM6Ly9kZXYuYS1zaXQuYXQvY3J5cHRvYmlu\n"+
-                "ZGluZy9tYW5hZ2VtZW50L3Jldm9rZTANBgkqhkiG9w0BAQsFAAOCAgEAsBgHKnK4\n"+
-                "_Ur55fE9i39Y1qDVLfW3jfCT6LP-SkKss8-FF5BtOSp0UOLKgNDYbCFNQpd0sV8l\n"+
-                "04qbWZ7PZl2FrV8PeJOEHFjSXrgidPul92LcIxhGClosSbyfKCxNj9C5BrfRnGQf\n"+
-                "UWxuIGKN3-l7k99w-XG0ALmN-iw4cbC1fJu6L7JqK9EW0A7mA7UIJfoPAfaYF6Kh\n"+
-                "MoNFQHBOkhZ7tAtogrbNUoV8fT7x6KDm8LK7-QJvpu3rLbbDQFyTVqAkHeEefPEj\n"+
-                "IFAbhVb5leb98i04Pzzt0XrDk9BDHcqw6Br-Ai9k9l4DTGooMHosm9WpwMgOCKs5\n"+
-                "2Zi8e7Nqk3TknM51LWXHikVRyygouRW5xIJ9Wdek6nKESIoaBlDEGo2QvPfgSIhi\n"+
-                "t5OYXqx55wLRSH8378HaSh5VjhSsU6OduIZdPF5svFTAXKugHT8093v4ZxJ5-0AR\n"+
-                "_UbLTWUJV6OPLvdK9Ry-8J7DDTiHMI8ZCJF1kwoKUgZPcDNWXMQVILQNMVJBYypj\n"+
-                "E-vTJkqv_RpcOzcUjlk1GUEEKmglifdd0CCZTqMvhRzIHsCcO-7L_JFkmP_RHTyK\n"+
-                "DiFCYEKuiMLL3w6okuYRXNiP7GphECzW8I9rEQlmpeBEAeVuL1r9IdSmm7cs_A7u\n"+
-                "elj68kfiM-XK1Wf6gxZeWXd0nnNvwNdq0SI=\n"+
-                "-----END CERTIFICATE-----";
+    public void useCertificate() {
+        if(m_Keystore == null)
+        {
+            Toast.makeText(this,"Keystore not initialized", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if(m_Trustore == null)
+        {
+            Toast.makeText(this, "Truststore not initialized", Toast.LENGTH_LONG).show();
+            return;
+        }
 
-        Log.wtf("CERT1", test);
+        try
+        {
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(m_Trustore);
 
-        String hiho = Base64.encodeToString(cert.getBytes(), Base64.NO_WRAP);
+            //KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            //kmf.init(m_Keystore, "".toCharArray());
+        }
+        catch(Exception e)
+        {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("CAStore", e.getMessage());
+        }
 
-        String adapted = "-----BEGIN CERTIFICATE-----\n" + hiho + "\n-----END CERTIFICATE-----";
-
-        Log.wtf("CERT1", adapted);
-
-        //String hiho2 = Base64.(cert, Base64.NO_WRAP);
-
-        byte[] testing = Base64.decode(cert, Base64.NO_WRAP);
-
-        String str = new String(testing);
-
-        Log.wtf("CERT1", str);
+        Toast.makeText(this, "Success", Toast.LENGTH_LONG).show();
 
 
-    }
+        /*
+        OkHttpClient client = new OkHttpClient();
+        KeyStore keyStore = m_Keystore;
+        KeyStore trustStore = App.getInstance().getKeyStoreUtil().getTrustStore();
+
+        TrustManagerFactory tmf = null;
+        try {
+            tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        try {
+            tmf.init(trustStore);
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        }
+
+        KeyManagerFactory kmf = null;
+        try {
+            kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        kmf.init(keyStore, keyStorePassword);
+
+        SSLContext sslCtx = null;
+        try {
+            sslCtx = SSLContext.getInstance("TLS");
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        try {
+            sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+        } catch (KeyManagementException e) {
+            e.printStackTrace();
+        }
+        client.setSslSocketFactory(sslCtx.getSocketFactory());
+        client.setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.STRICT_HOSTNAME_VERIFIER);
+        */
+        }
 
 
 }
