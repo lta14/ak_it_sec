@@ -238,6 +238,8 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
             generator.initialize(new KeyGenParameterSpec.Builder(
                     alias, ANY_PURPOSE)
                     .setDigests(KeyProperties.DIGEST_SHA256)
+                    //.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
                     .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                     .build());
         } catch (Exception e) {
