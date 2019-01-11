@@ -73,7 +73,8 @@
                 android:layout_height="match_parent"
                 android:layout_weight="0"
                 android:ellipsize="end"
-                android:lines="5" />
+                android:lines="5"
+                android:inputType="none"/>
 
         </LinearLayout>
 
@@ -113,10 +114,8 @@
                 android:layout_height="match_parent"
                 android:layout_weight="0"
                 android:ellipsize="end"
-                android:lines="3" />
-
-
-
+                android:lines="3"
+                />
         </LinearLayout>
 
         <Button
