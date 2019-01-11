@@ -11,9 +11,9 @@ import android.util.Base64;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
+import android.webkit.WebView;
 import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -25,25 +25,24 @@ import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
-import com.squareup.okhttp.OkHttpClient;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringWriter;
-import java.security.KeyManagementException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -55,9 +54,14 @@ import org.spongycastle.pkcs.PKCS10CertificationRequest;
 import org.spongycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.spongycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+
+import org.apache.commons.io.IOUtils;
 
 public class MainActivity extends AppCompatActivity {
     private TextView m_TextMessage;
@@ -65,13 +69,12 @@ public class MainActivity extends AppCompatActivity {
     private EditText m_TokenText;
     private EditText m_RequestSuccess;
     private ImageView m_ShowSuccess;
-
+    private WebView m_Webview;
     private CryptoModel m_Model;
 
     private RequestQueue m_Queue;
 
     private String m_Cert;
-
 
     private KeyStore m_Keystore;
     private KeyStore m_Trustore;
@@ -113,6 +116,9 @@ public class MainActivity extends AppCompatActivity {
         m_TokenText = findViewById(R.id.tokenText);
         m_RequestSuccess = findViewById(R.id.requestSuccess);
         m_ShowSuccess = findViewById(R.id.showSuccess);
+        m_Webview = findViewById(R.id.webview);
+
+        m_Webview.getSettings().setJavaScriptEnabled(true);
 
         BottomNavigationView navigation = findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
@@ -407,10 +413,10 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-
         try {
             //keyStore = KeyStore.getInstance("BKS");
             m_Trustore = KeyStore.getInstance("pkcs12");
+            //m_Trustore = KeyStore.getInstance("AndroidCAStore");
             //KeyStore keystore = KeyStore.getInstance("JKS");
         }catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -419,7 +425,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
-            m_Trustore.load(null);
+            m_Trustore.load(null,null);
         }
         catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -432,6 +438,7 @@ public class MainActivity extends AppCompatActivity {
             if(m_Trustore.containsAlias(certAlias))
             {
                 m_Trustore.deleteEntry(certAlias);
+                Log.wtf("Certficate", "Delete Cert");
             }
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -445,101 +452,120 @@ public class MainActivity extends AppCompatActivity {
             privateKeyEntry = (KeyStore.PrivateKeyEntry)m_Keystore.getEntry("my_key", null);
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.wtf("Certificate4", e.getMessage());
             return;
         }
 
         PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+        if(privateKey == null)
+        {
+            Log.wtf("Certificate", "privatekey is null");
+            return;
+        }
 
         try {
-            m_Trustore.setKeyEntry(certAlias, privateKey, "mypassword".toCharArray(), new X509Certificate[]{certificate});
-        } catch (KeyStoreException e) {
+            //m_Trustore.setCertificateEntry(certAlias);
+            m_Trustore.setKeyEntry(certAlias, privateKey, null, new X509Certificate[]{certificate});
+        } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
             Log.wtf("Certificate5", e.getMessage());
             return;
         }
 
-        /*
-        try {
-            m_Keystore.setCertificateEntry(certAlias, certificate);
-        } catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-        */
-
         m_ShowSuccess.setVisibility(View.VISIBLE);
     }
 
-    public void useCertificate() {
-        if(m_Keystore == null)
-        {
-            Toast.makeText(this,"Keystore not initialized", Toast.LENGTH_LONG).show();
+    public void useCertificate(View view) {
+        if (m_Keystore == null) {
+            Toast.makeText(this, "Keystore not initialized", Toast.LENGTH_LONG).show();
             return;
         }
-        if(m_Trustore == null)
-        {
+        if (m_Trustore == null) {
             Toast.makeText(this, "Truststore not initialized", Toast.LENGTH_LONG).show();
             return;
         }
 
-        try
-        {
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        TrustManagerFactory tmf;
+        KeyManagerFactory kmf;
+        try {
+            tmf = TrustManagerFactory.getInstance("X509");
             tmf.init(m_Trustore);
+            kmf = KeyManagerFactory.getInstance("X509");
+            kmf.init(m_Keystore, null);
+        } catch (Exception e) {
+            Toast.makeText(this,
+                    "Could not create TrustManagerFactory/KeyManagerFactory", Toast.LENGTH_LONG).show();
+            return;
+        }
 
-            //KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            //kmf.init(m_Keystore, "".toCharArray());
-        }
-        catch(Exception e)
-        {
+        SSLContext context;
+        try {
+            context = SSLContext.getInstance("TLS");
+            context.init(null, tmf.getTrustManagers(), null);
+        } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.wtf("CAStore", e.getMessage());
+            return;
         }
+
+        X509TrustManager xtm = (X509TrustManager) tmf.getTrustManagers()[0];
+        for (X509Certificate cert : xtm.getAcceptedIssuers()) {
+            String certStr = "S:" + cert.getSubjectDN().getName() + "\nI:"
+                    + cert.getIssuerDN().getName();
+            Log.wtf("CERT", certStr);
+        }
+
+        final SSLSocketFactory factory = context.getSocketFactory();
+
+        Thread thread = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                try  {
+                    connectToServiceProvider(factory);
+                } catch (Exception e) {
+                    Log.e("CERT",Log.getStackTraceString(e));
+                }
+            }
+        });
+
+        thread.start();
 
         Toast.makeText(this, "Success", Toast.LENGTH_LONG).show();
+    }
 
+    private void connectToServiceProvider(SSLSocketFactory factory)
+    {
+        String result;
+        HttpURLConnection urlConnection = null;
 
-        /*
-        OkHttpClient client = new OkHttpClient();
-        KeyStore keyStore = m_Keystore;
-        KeyStore trustStore = App.getInstance().getKeyStoreUtil().getTrustStore();
-
-        TrustManagerFactory tmf = null;
         try {
-            tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        }
-        try {
-            tmf.init(trustStore);
-        } catch (KeyStoreException e) {
-            e.printStackTrace();
-        }
+            URL requestedUrl = new URL("https://www.google.com");
+            urlConnection = (HttpURLConnection) requestedUrl.openConnection();
+            if(urlConnection instanceof HttpsURLConnection) {
+                ((HttpsURLConnection)urlConnection)
+                        .setSSLSocketFactory(factory);
+            }
+            urlConnection.setRequestMethod("GET");
+            urlConnection.setConnectTimeout(1500);
+            urlConnection.setReadTimeout(1500);
+            int lastResponseCode = urlConnection.getResponseCode();
+            InputStream in = urlConnection.getInputStream();
+            result = IOUtils.toString(in, StandardCharsets.UTF_8);
+            String lastContentType = urlConnection.getContentType();
+            Log.wtf("CERT", result);
+            Log.wtf("CERT", "Code:"+lastResponseCode);
+            Log.wtf("CERT", "Contenttype:"+lastContentType);
 
-        KeyManagerFactory kmf = null;
-        try {
-            kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+            //TODO: obtain data
+            m_Webview.loadDataWithBaseURL("", result, "text/html", "UTF-8", "");
         }
-        kmf.init(keyStore, keyStorePassword);
-
-        SSLContext sslCtx = null;
-        try {
-            sslCtx = SSLContext.getInstance("TLS");
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+        catch (Exception e)
+        {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("CERT",Log.getStackTraceString(e));
+        } finally {
+            if(urlConnection != null) {
+                urlConnection.disconnect();
+            }
         }
-        try {
-            sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-        } catch (KeyManagementException e) {
-            e.printStackTrace();
-        }
-        client.setSslSocketFactory(sslCtx.getSocketFactory());
-        client.setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.STRICT_HOSTNAME_VERIFIER);
-        */
-        }
-
-
+    }
 }
