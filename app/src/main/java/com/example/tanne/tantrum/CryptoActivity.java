@@ -13,15 +13,15 @@ import android.widget.EditText;
 import android.widget.Toast;
 
 import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.util.Base64;
 
 import javax.crypto.Cipher;
 
+import static android.util.Base64.decode;
+import static android.util.Base64.encodeToString;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class CryptoActivity extends AppCompatActivity implements BottomNavigationView.OnNavigationItemSelectedListener {
@@ -32,10 +32,6 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
     private EditText m_InputText;
     private EditText m_ResultText1;
     private EditText m_ResultText2;
-
-    private byte[] m_EncryptedBytes;
-    private byte[] m_DecryptedBytes;
-    private byte[] m_SignatureBytes;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,8 +47,6 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
         Menu menu = navigation.getMenu();
         MenuItem menuItem = menu.getItem(2);
         menuItem.setChecked(true);
-
-        findKeys();
     }
 
     @Override
@@ -72,9 +66,8 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
         return false;
     }
 
-
-
     public void decrypt(View view) {
+        findKeys();
         if(m_PrivateKey == null)
         {
             Toast.makeText(this, "Private key was not found", Toast.LENGTH_LONG).show();
@@ -86,37 +79,49 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             return;
         }
 
-        if(m_EncryptedBytes == null)
+        if(m_ResultText1.getText() == null)
         {
-            Toast.makeText(this, "Please provide encrypted text string", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // byte[] ivBytes = m_HashMap.get("iv");
+        // Receiving side
+        String input = m_ResultText1.getText().toString();
 
+        if(input == null)
+        {
+            Toast.makeText(this, "Please provide input string", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        byte[] data;
+        try
+        {
+            data = decode(input, android.util.Base64.DEFAULT);
+        }catch (Exception e)
+        {
+            Toast.makeText(this, "Decoding failed:"+ e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
         //Decrypt data
         String decryptedText;
         try
         {
             Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            //GCMParameterSpec spec = new GCMParameterSpec(128, ivBytes);
             cipher.init(Cipher.DECRYPT_MODE, m_PrivateKey);
-            m_DecryptedBytes = cipher.doFinal(m_EncryptedBytes);
-            decryptedText = new String(m_DecryptedBytes, UTF_8);
+            byte[] decryptedBytes = cipher.doFinal(data);
+            decryptedText = new String(decryptedBytes, UTF_8);
         }
         catch (Exception e)
         {
             Toast.makeText(this, "Decryption failed:"+ e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.e("CRYPTO",e.getMessage());
-            Log.e("CRYPTO",Log.getStackTraceString(e));
             return;
         }
 
         m_ResultText2.setText(decryptedText);
-        m_EncryptedBytes = null;
     }
 
     public void encrypt(View view) {
+        findKeys();
         if(m_PrivateKey == null)
         {
             Toast.makeText(this, "Private key was not found", Toast.LENGTH_LONG).show();
@@ -144,11 +149,12 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             return;
         }
 
+        byte[] encryptedBytes;
         try
         {
             Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             cipher.init(Cipher.ENCRYPT_MODE, m_PublicKey);
-            m_EncryptedBytes = cipher.doFinal(inputBytes);
+            encryptedBytes = cipher.doFinal(inputBytes);
         }
         catch (Exception e)
         {
@@ -156,11 +162,12 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             return;
         }
 
-        String result = new String(m_EncryptedBytes, UTF_8);
-        m_ResultText1.setText(result);
+        String encodedString = encodeToString(encryptedBytes, android.util.Base64.DEFAULT);
+        m_ResultText1.setText(encodedString);
     }
 
     public void sign(View view) {
+        findKeys();
         if(m_PrivateKey == null)
         {
             Toast.makeText(this, "Private key was not found", Toast.LENGTH_LONG).show();
@@ -180,31 +187,34 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             return;
         }
 
+        byte[] signatureBytes;
         try {
-            m_SignatureBytes = input.getBytes("UTF-8");
+            signatureBytes = input.getBytes("UTF-8");
         } catch (UnsupportedEncodingException e) {
             Toast.makeText(this, "Encryption failed:" + e.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
         // signature
+        byte[] result;
         try
         {
             Signature sig = Signature.getInstance("SHA256withRSA");
             sig.initSign(m_PrivateKey);
-            sig.update(m_SignatureBytes);
-            m_SignatureBytes = sig.sign();
+            sig.update(signatureBytes);
+            result = sig.sign();
         }
         catch (Exception e) {
             Toast.makeText(this, "Signing failed:" + e.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
-        String result = new String(m_SignatureBytes, UTF_8);
-        m_ResultText1.setText(result);
+        String encodedString = encodeToString(result, android.util.Base64.DEFAULT);
+        m_ResultText1.setText(encodedString);
     }
 
     public void verify(View view) {
+        findKeys();
         if(m_PrivateKey == null)
         {
             Toast.makeText(this, "Private key was not found", Toast.LENGTH_LONG).show();
@@ -216,11 +226,17 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             return;
         }
 
-        if(m_SignatureBytes == null)
+        // Receiving side
+        String input = m_ResultText1.getText().toString();
+
+        if(input == null)
         {
-            Toast.makeText(this, "Please provide a signature", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Please provide input string", Toast.LENGTH_LONG).show();
             return;
         }
+
+        byte[] data = decode(input, android.util.Base64.DEFAULT);
+
 
         byte[] plaintextBytes;
         try {
@@ -239,9 +255,7 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             publicSignature.initVerify(m_PublicKey);
             publicSignature.update(plaintextBytes);
 
-            //byte[] signatureBytes = Base64.getDecoder().decode(signature);
-
-            result = publicSignature.verify(m_SignatureBytes);
+            result = publicSignature.verify(data);
         }
         catch (Exception e)
         {
@@ -252,16 +266,21 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
         }
 
         m_ResultText2.setText("" + result);
-        m_SignatureBytes = null;
     }
 
     private void findKeys()
     {
+        if(m_PublicKey != null && m_PrivateKey != null)
+        {
+            return;
+        }
+
         KeyStore store;
         try {
             store = KeyStore.getInstance("AndroidKeyStore");
         }catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("CRYPTO",e.getMessage());
+            Log.e("CRYPTO",Log.getStackTraceString(e));
             return;
         }
 
@@ -269,7 +288,8 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
             store.load(null);
         }
         catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("CRYPTO",e.getMessage());
+            Log.e("CRYPTO",Log.getStackTraceString(e));
             return;
         }
 
@@ -281,7 +301,8 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
                 return;
             }
         } catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("CRYPTO",e.getMessage());
+            Log.e("CRYPTO",Log.getStackTraceString(e));
             return;
         }
 
@@ -290,23 +311,14 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
         try {
             privateKeyEntry = (KeyStore.PrivateKeyEntry)store.getEntry(alias, null);
         } catch (Exception e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("CRYPTO",e.getMessage());
+            Log.e("CRYPTO",Log.getStackTraceString(e));
             return;
         }
 
         PrivateKey privateKey = privateKeyEntry.getPrivateKey();
         PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
 
-        if(privateKey == null)
-        {
-            Toast.makeText(this, "Private key was not found", Toast.LENGTH_LONG).show();
-            return;
-        }
-        if(publicKey == null)
-        {
-            Toast.makeText(this, "Public key was not found", Toast.LENGTH_LONG).show();
-            return;
-        }
         m_PrivateKey = privateKey;
         m_PublicKey = publicKey;
     }
@@ -315,9 +327,5 @@ public class CryptoActivity extends AppCompatActivity implements BottomNavigatio
         m_InputText.setText("");
         m_ResultText1.setText("");
         m_ResultText2.setText("");
-
-        m_EncryptedBytes = null;
-        m_DecryptedBytes = null;
-        m_SignatureBytes = null;
     }
 }
