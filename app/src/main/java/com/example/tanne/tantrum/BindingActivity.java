@@ -12,7 +12,9 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -60,6 +62,16 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 
+
+class MyWebViewClient extends WebViewClient {
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+        view.loadUrl(request.getUrl().toString());
+        return false;
+    }
+}
+
+
 public class BindingActivity extends AppCompatActivity implements BottomNavigationView.OnNavigationItemSelectedListener {
 
     private EditText m_UrlText;
@@ -98,6 +110,7 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         m_WebView = findViewById(R.id.webview);
 
         m_WebView.getSettings().setJavaScriptEnabled(true);
+        m_WebView.setWebViewClient(new MyWebViewClient());
 
         BottomNavigationView navigation = findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(this);
