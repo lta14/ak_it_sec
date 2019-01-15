@@ -1,6 +1,5 @@
 package com.example.tanne.tantrum;
 
-import android.content.Context;
 import android.content.Intent;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
@@ -13,7 +12,6 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.EditText;
@@ -61,8 +59,6 @@ import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
 
 public class BindingActivity extends AppCompatActivity implements BottomNavigationView.OnNavigationItemSelectedListener {
 
@@ -70,13 +66,14 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
     private EditText m_TokenText;
     private EditText m_RequestSuccess;
     private ImageView m_ShowSuccess;
-    private WebView m_Webview;
+    private WebView m_WebView;
     private CryptoModel m_Model;
     private Button m_ScanButton;
 
     private RequestQueue m_Queue;
 
     private String m_Cert;
+    private String m_ServiceProviders;
 
     private KeyStore m_Keystore;
     private KeyStore m_Trustore;
@@ -98,9 +95,9 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         m_RequestSuccess = findViewById(R.id.requestSuccess);
         m_ShowSuccess = findViewById(R.id.showSuccess);
         m_ScanButton = findViewById(R.id.scanBtn);
-        m_Webview = findViewById(R.id.webview);
+        m_WebView = findViewById(R.id.webview);
 
-        m_Webview.getSettings().setJavaScriptEnabled(true);
+        m_WebView.getSettings().setJavaScriptEnabled(true);
 
         BottomNavigationView navigation = findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(this);
@@ -111,6 +108,7 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
 
         //intializing scan object
         qrScan = new IntentIntegrator(this);
+        qrScan.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE_TYPES);
 
         // Instantiate the RequestQueue.
         m_Queue = Volley.newRequestQueue(this);
@@ -147,7 +145,6 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
             super.onActivityResult(requestCode, resultCode, data);
         }
     }
-
 
     public void scan(View view) {
         qrScan.initiateScan();
@@ -233,14 +230,13 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         try {
             generator = KeyPairGenerator.getInstance(
                     KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore");
-            //TODO: setSubject needed?
 
             generator.initialize(new KeyGenParameterSpec.Builder(
                     alias, ANY_PURPOSE)
-                    .setDigests(KeyProperties.DIGEST_SHA256)
-                    //.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
                     .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+                    .setKeySize(2048)
                     .build());
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -258,25 +254,16 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
             return;
         }
 
-        //TODO: (PrivateKey)keystore.getKey(alias, privateKeyPassword)); give password
         PrivateKey privateKey = privateKeyEntry.getPrivateKey();
         PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
 
-        //PrivateKey privateKey = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
-        //PublicKey publicKey = keyStore.getCertificate(alias).getPublicKey();
-
-        /*
-        I was referring to the privateKey. The public key raw data is accesible using
-        byte publickey[] = keyStore.getCertificate(alias).getPublicKey().getEncoded();.
-        You will need to convert it to base64 to send it to server as String
-         */
-
-        X500Name x500Name = new X500Name(m_Model.getM_Subject());
         ContentSigner signGen;
         try {
             signGen = new JcaContentSignerBuilder("SHA256withRSA").build(privateKey);
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e("CERT",e.getMessage());
+            Log.e("CERT",Log.getStackTraceString(e));
             return;
         }
         if(signGen == null)
@@ -285,6 +272,7 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
             return;
         }
 
+        X500Name x500Name = new X500Name(m_Model.getM_Subject());
         PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(x500Name, publicKey);
         PKCS10CertificationRequest csr = builder.build(signGen);
 
@@ -339,8 +327,6 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
                             String cert = jsonObject.getString("cert");
                             m_Cert = cert;
                             storeCertInKeystore(cert);
-
-
                         } catch (JSONException e) {
                             e.printStackTrace();
                         }
@@ -404,10 +390,7 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         }
 
         try {
-            //keyStore = KeyStore.getInstance("BKS");
             m_Trustore = KeyStore.getInstance("pkcs12");
-            //m_Trustore = KeyStore.getInstance("AndroidCAStore");
-            //KeyStore keystore = KeyStore.getInstance("JKS");
         }catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
             Log.wtf("Certificate1", e.getMessage());
@@ -415,7 +398,7 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         }
 
         try {
-            m_Trustore.load(null,null);
+            m_Trustore.load(null);
         }
         catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -453,11 +436,10 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         }
 
         try {
-            //m_Trustore.setCertificateEntry(certAlias);
             m_Trustore.setKeyEntry(certAlias, privateKey, null, new X509Certificate[]{certificate});
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.wtf("Certificate5", e.getMessage());
+            Log.wtf("Cert", e.getMessage());
             return;
         }
 
@@ -465,22 +447,15 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
     }
 
     public void useCertificate(View view) {
-        if (m_Keystore == null) {
-            Toast.makeText(this, "Keystore not initialized", Toast.LENGTH_LONG).show();
-            return;
-        }
         if (m_Trustore == null) {
             Toast.makeText(this, "Truststore not initialized", Toast.LENGTH_LONG).show();
             return;
         }
 
-        TrustManagerFactory tmf;
         KeyManagerFactory kmf;
         try {
-            tmf = TrustManagerFactory.getInstance("X509");
-            tmf.init(m_Trustore);
             kmf = KeyManagerFactory.getInstance("X509");
-            kmf.init(m_Keystore, null);
+            kmf.init(m_Trustore, null);
         } catch (Exception e) {
             Toast.makeText(this,
                     "Could not create TrustManagerFactory/KeyManagerFactory", Toast.LENGTH_LONG).show();
@@ -490,21 +465,14 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         SSLContext context;
         try {
             context = SSLContext.getInstance("TLS");
-            context.init(null, tmf.getTrustManagers(), null);
+            context.init(kmf.getKeyManagers(), null, new java.security.SecureRandom());
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
-        X509TrustManager xtm = (X509TrustManager) tmf.getTrustManagers()[0];
-        for (X509Certificate cert : xtm.getAcceptedIssuers()) {
-            String certStr = "S:" + cert.getSubjectDN().getName() + "\nI:"
-                    + cert.getIssuerDN().getName();
-            Log.wtf("CERT", certStr);
-        }
-
         final SSLSocketFactory factory = context.getSocketFactory();
-
+        m_ServiceProviders = null;
         Thread thread = new Thread(new Runnable() {
 
             @Override
@@ -518,8 +486,25 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         });
 
         thread.start();
+        Toast.makeText(this, "Load further ServiceProviders", Toast.LENGTH_SHORT).show();
+        try {
+            thread.join();  // wait for thread to finish
+        } catch (InterruptedException e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.wtf("Cert", e.getMessage());
+            return;
+        }
+
+        if(m_ServiceProviders == null)
+        {
+            Toast.makeText(this, "Could not retrieve ServiceProviders", Toast.LENGTH_LONG).show();
+            return;
+        }
 
         Toast.makeText(this, "Success", Toast.LENGTH_LONG).show();
+
+        //TODO: obtain data
+        m_WebView.loadDataWithBaseURL("", m_ServiceProviders, "text/html", "UTF-8", "");
     }
 
     private void connectToServiceProvider(SSLSocketFactory factory)
@@ -528,25 +513,25 @@ public class BindingActivity extends AppCompatActivity implements BottomNavigati
         HttpURLConnection urlConnection = null;
 
         try {
-            URL requestedUrl = new URL("https://www.google.com");
+            URL requestedUrl = new URL(m_Model.getM_AppContentUrl());
             urlConnection = (HttpURLConnection) requestedUrl.openConnection();
             if(urlConnection instanceof HttpsURLConnection) {
                 ((HttpsURLConnection)urlConnection)
                         .setSSLSocketFactory(factory);
             }
+            urlConnection.connect();
             urlConnection.setRequestMethod("GET");
-            urlConnection.setConnectTimeout(1500);
-            urlConnection.setReadTimeout(1500);
+            urlConnection.setConnectTimeout(2000);
+            urlConnection.setReadTimeout(2000);
             int lastResponseCode = urlConnection.getResponseCode();
             InputStream in = urlConnection.getInputStream();
             result = IOUtils.toString(in, StandardCharsets.UTF_8);
             String lastContentType = urlConnection.getContentType();
-            Log.wtf("CERT", result);
             Log.wtf("CERT", "Code:"+lastResponseCode);
             Log.wtf("CERT", "Contenttype:"+lastContentType);
+            Log.wtf("CERT", result);
 
-            //TODO: obtain data
-            m_Webview.loadDataWithBaseURL("", result, "text/html", "UTF-8", "");
+            m_ServiceProviders = result;
         }
         catch (Exception e)
         {
